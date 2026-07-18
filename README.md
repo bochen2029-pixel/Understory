@@ -8,6 +8,15 @@ no cloud. Launch one `.exe`, get a native chat window.
 ![status](https://img.shields.io/badge/model-Bonsai--27B--Q1__0-5aa85c) ·
 1.125 bits/weight · 262K context · RTX-class GPU
 
+![Understory — the surprisal bonsai: a live 3D tree grown from the model's per-token uncertainty](docs/tree.png)
+
+> **The 🌳 Tree view** grows a bonsai from the answer's own logprobs — the trunk
+> smolders red and sprouts glowing ember-branches *exactly* where the model was
+> least certain (i.e. most likely confabulating), and stays smooth green where it
+> was confident. Above: the model hedging on the Titanic's dimensions — every
+> figure lit amber-red. Hover a branch to read its token. It's the visual dual of
+> "don't trust model-authored facts": the gnarls tell you where to point a check.
+
 ---
 
 ## What it is
@@ -29,6 +38,11 @@ no cloud. Launch one `.exe`, get a native chat window.
   (green → amber → red) computed from the model's own streamed logprobs. It
   turns red exactly where the model was least certain (and most likely
   confabulating). Measured, not inferred.
+- **🌳 Uncertainty tree** — a live 3D "surprisal bonsai" (Three.js, bundled) grown
+  from the answer's per-token logprobs: confident text is smooth green wood; the
+  trunk smolders red with ember-branches where the model was guessing. Hover a
+  branch to read its token; grows live as the model streams. Nothing is
+  decoration — the geometry *is* the signal.
 - Markdown + fenced **code blocks** with one-click copy.
 - Adjustable sampling (temperature / top-p / top-k / max tokens) and a custom
   system prompt.
