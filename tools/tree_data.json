@@ -1,0 +1,301 @@
+{
+ "prompts": [
+  {
+   "label": "known",
+   "question": "What is 2 plus 2? Answer in one short sentence.",
+   "answer": "2 plus 2 equals 4.",
+   "tokens": [
+    {
+     "token": "2",
+     "surprisal": 0.1719,
+     "entropy": 0.5767,
+     "margin": 2.1492
+    },
+    {
+     "token": " plus",
+     "surprisal": 0.1724,
+     "entropy": 0.4857,
+     "margin": 1.7674
+    },
+    {
+     "token": " ",
+     "surprisal": 0.0001,
+     "entropy": 0.0008,
+     "margin": 9.9782
+    },
+    {
+     "token": "2",
+     "surprisal": 0.0,
+     "entropy": 0.0004,
+     "margin": 11.5252
+    },
+    {
+     "token": " equals",
+     "surprisal": 0.3511,
+     "entropy": 0.6111,
+     "margin": 0.8681
+    },
+    {
+     "token": " ",
+     "surprisal": 0.0007,
+     "entropy": 0.006,
+     "margin": 7.984
+    },
+    {
+     "token": "4",
+     "surprisal": 0.0002,
+     "entropy": 0.0016,
+     "margin": 9.5604
+    },
+    {
+     "token": ".",
+     "surprisal": 0.0056,
+     "entropy": 0.0354,
+     "margin": 5.3927
+    }
+   ]
+  },
+  {
+   "label": "titanic",
+   "question": "Who was the captain of the RMS Titanic? Answer in one sentence.",
+   "answer": "Sir Edward Smith was the captain of the RMS Titanic.",
+   "tokens": [
+    {
+     "token": "Sir",
+     "surprisal": 1.1916,
+     "entropy": 1.1257,
+     "margin": 0.2577
+    },
+    {
+     "token": " Edward",
+     "surprisal": 0.7875,
+     "entropy": 0.8882,
+     "margin": 1.7548
+    },
+    {
+     "token": " Smith",
+     "surprisal": 1.652,
+     "entropy": 0.7457,
+     "margin": 1.3706
+    },
+    {
+     "token": " was",
+     "surprisal": 0.1007,
+     "entropy": 0.3836,
+     "margin": 3.7193
+    },
+    {
+     "token": " the",
+     "surprisal": 0.0025,
+     "entropy": 0.0171,
+     "margin": 6.6926
+    },
+    {
+     "token": " captain",
+     "surprisal": 0.0255,
+     "entropy": 0.1129,
+     "margin": 4.2138
+    },
+    {
+     "token": " of",
+     "surprisal": 0.0079,
+     "entropy": 0.0478,
+     "margin": 4.9329
+    },
+    {
+     "token": " the",
+     "surprisal": 0.0009,
+     "entropy": 0.0069,
+     "margin": 7.1401
+    },
+    {
+     "token": " RMS",
+     "surprisal": 0.0034,
+     "entropy": 0.0237,
+     "margin": 6.3613
+    },
+    {
+     "token": " Titanic",
+     "surprisal": 0.0091,
+     "entropy": 0.0542,
+     "margin": 4.8711
+    },
+    {
+     "token": ".",
+     "surprisal": 0.0261,
+     "entropy": 0.1308,
+     "margin": 4.2789
+    }
+   ]
+  },
+  {
+   "label": "obscure",
+   "question": "Name the chief engineer of the RMS Carpathia and his birth year, in one sentence.",
+   "answer": "The chief engineer of the RMS Carpathia was John A. MacGregor, who was born in 1867.",
+   "tokens": [
+    {
+     "token": "The",
+     "surprisal": 0.2433,
+     "entropy": 0.4838,
+     "margin": 3.0221
+    },
+    {
+     "token": " chief",
+     "surprisal": 0.0501,
+     "entropy": 0.2248,
+     "margin": 3.3375
+    },
+    {
+     "token": " engineer",
+     "surprisal": 0.001,
+     "entropy": 0.0077,
+     "margin": 8.1472
+    },
+    {
+     "token": " of",
+     "surprisal": 0.029,
+     "entropy": 0.1383,
+     "margin": 3.7255
+    },
+    {
+     "token": " the",
+     "surprisal": 0.0049,
+     "entropy": 0.0313,
+     "margin": 5.3509
+    },
+    {
+     "token": " RMS",
+     "surprisal": 0.002,
+     "entropy": 0.015,
+     "margin": 6.7229
+    },
+    {
+     "token": " Car",
+     "surprisal": 0.0159,
+     "entropy": 0.0811,
+     "margin": 4.1854
+    },
+    {
+     "token": "path",
+     "surprisal": 0.0001,
+     "entropy": 0.0005,
+     "margin": 11.1591
+    },
+    {
+     "token": "ia",
+     "surprisal": 0.0001,
+     "entropy": 0.0006,
+     "margin": 10.8252
+    },
+    {
+     "token": " was",
+     "surprisal": 0.0453,
+     "entropy": 0.1899,
+     "margin": 3.1494
+    },
+    {
+     "token": " John",
+     "surprisal": 3.2709,
+     "entropy": 0.6454,
+     "margin": 0.3474
+    },
+    {
+     "token": " A",
+     "surprisal": 3.5743,
+     "entropy": 0.6067,
+     "margin": 0.4489
+    },
+    {
+     "token": ".",
+     "surprisal": 0.0407,
+     "entropy": 0.1143,
+     "margin": 5.2967
+    },
+    {
+     "token": " Mac",
+     "surprisal": 2.9937,
+     "entropy": 0.4657,
+     "margin": 0.4653
+    },
+    {
+     "token": "Greg",
+     "surprisal": 2.8755,
+     "entropy": 0.8997,
+     "margin": 0.9121
+    },
+    {
+     "token": "or",
+     "surprisal": 0.0032,
+     "entropy": 0.0195,
+     "margin": 6.7268
+    },
+    {
+     "token": ",",
+     "surprisal": 0.2316,
+     "entropy": 0.421,
+     "margin": 3.1722
+    },
+    {
+     "token": " who",
+     "surprisal": 0.0561,
+     "entropy": 0.2393,
+     "margin": 3.0775
+    },
+    {
+     "token": " was",
+     "surprisal": 0.0003,
+     "entropy": 0.002,
+     "margin": 9.0775
+    },
+    {
+     "token": " born",
+     "surprisal": 0.0001,
+     "entropy": 0.0005,
+     "margin": 10.6488
+    },
+    {
+     "token": " in",
+     "surprisal": 0.0061,
+     "entropy": 0.0367,
+     "margin": 5.128
+    },
+    {
+     "token": " ",
+     "surprisal": 0.0052,
+     "entropy": 0.0319,
+     "margin": 5.3734
+    },
+    {
+     "token": "1",
+     "surprisal": 0.0001,
+     "entropy": 0.0007,
+     "margin": 10.6897
+    },
+    {
+     "token": "8",
+     "surprisal": 0.0065,
+     "entropy": 0.0452,
+     "margin": 5.6801
+    },
+    {
+     "token": "6",
+     "surprisal": 1.2195,
+     "entropy": 1.4209,
+     "margin": 0.0335
+    },
+    {
+     "token": "7",
+     "surprisal": 2.4462,
+     "entropy": 1.2308,
+     "margin": 0.0501
+    },
+    {
+     "token": ".",
+     "surprisal": 0.0032,
+     "entropy": 0.023,
+     "margin": 6.898
+    }
+   ]
+  }
+ ]
+}

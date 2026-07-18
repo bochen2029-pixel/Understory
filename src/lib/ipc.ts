@@ -22,6 +22,8 @@ export interface TokenStat {
   surprisal: number;
   entropy: number;
   margin: number;
+  /** The token text — attached client-side from the stream (not sent by Rust). */
+  token?: string;
 }
 
 export interface AssistantReply {

@@ -26,6 +26,7 @@ export default function StatusBar() {
   const streaming = useBonsai((s) => s.streaming);
   const newChat = useBonsai((s) => s.newChat);
   const toggleSettings = useBonsai((s) => s.toggleSettings);
+  const toggleTree = useBonsai((s) => s.toggleTree);
 
   const dotColor = initError ? '#d9534f' : ready ? '#5aa85c' : '#d8b45a';
   const label = initError ? 'Error' : ready ? 'Ready' : 'Loading…';
@@ -63,6 +64,13 @@ export default function StatusBar() {
           title="New chat"
         >
           + New
+        </button>
+        <button
+          onClick={() => toggleTree()}
+          className="text-[12px] px-2.5 py-1 rounded-md border border-bark-700 text-[#c3d4b9] hover:bg-bark-800 transition"
+          title="Uncertainty tree — a bonsai grown from the last answer's per-token surprisal"
+        >
+          🌳 Tree
         </button>
         <button
           onClick={() => toggleSettings()}

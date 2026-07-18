@@ -52,6 +52,7 @@ interface BonsaiState {
 
   settings: Settings;
   settingsOpen: boolean;
+  treeOpen: boolean;
 
   init: () => Promise<void>;
   send: (text: string) => Promise<void>;
@@ -60,11 +61,12 @@ interface BonsaiState {
   setSetting: <K extends keyof Settings>(k: K, v: Settings[K]) => void;
   resetSettings: () => void;
   toggleSettings: (open?: boolean) => void;
+  toggleTree: (open?: boolean) => void;
   toggleThinking: (id: string) => void;
 
   _patch: (id: string, patch: Partial<Msg>) => void;
   _append: (id: string, field: 'content' | 'reasoning', text: string) => void;
-  _pushStat: (id: string, st: TokenStat) => void;
+  _pushStat: (id: string, token: string, st: TokenStat) => void;
 }
 
 function uid(): string {
@@ -93,6 +95,7 @@ export const useBonsai = create<BonsaiState>()(
 
       settings: DEFAULT_SETTINGS,
       settingsOpen: false,
+      treeOpen: false,
 
       _patch: (id, patch) =>
         set((s) => ({ messages: s.messages.map((m) => (m.id === id ? { ...m, ...patch } : m)) })),
@@ -104,10 +107,12 @@ export const useBonsai = create<BonsaiState>()(
           ),
         })),
 
-      _pushStat: (id, st) =>
+      _pushStat: (id, token, st) =>
         set((s) => ({
           messages: s.messages.map((m) =>
-            m.id === id ? { ...m, answerStats: [...(m.answerStats ?? []), st] } : m,
+            m.id === id
+              ? { ...m, answerStats: [...(m.answerStats ?? []), { ...st, token }] }
+              : m,
           ),
         })),
 
@@ -122,7 +127,7 @@ export const useBonsai = create<BonsaiState>()(
           });
           events.onToken((id, t, st) => {
             _append(id, 'content', t);
-            if (st) get()._pushStat(id, st);
+            if (st) get()._pushStat(id, t, st);
           });
           events.onDone((id, stopped, tps, tokens, mean, peak) =>
             _patch(id, {
@@ -222,7 +227,8 @@ export const useBonsai = create<BonsaiState>()(
             stopped: reply.stopped,
             tps: reply.tps,
             tokens: reply.tokens,
-            answerStats: reply.answer_stats,
+            // answerStats is kept from the live token stream (it carries the
+            // per-token text, which reply.answer_stats does not).
             meanSurprisal: reply.mean_surprisal,
             peakSurprisal: reply.peak_surprisal,
             thinkingOpen: false,
@@ -254,6 +260,7 @@ export const useBonsai = create<BonsaiState>()(
       resetSettings: () => set({ settings: DEFAULT_SETTINGS }),
       toggleSettings: (open) =>
         set((s) => ({ settingsOpen: open === undefined ? !s.settingsOpen : open })),
+      toggleTree: (open) => set((s) => ({ treeOpen: open === undefined ? !s.treeOpen : open })),
       toggleThinking: (id) =>
         set((s) => ({
           messages: s.messages.map((m) =>

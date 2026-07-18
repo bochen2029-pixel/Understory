@@ -3,6 +3,7 @@ import StatusBar from './components/StatusBar';
 import Conversation from './components/Conversation';
 import Composer from './components/Composer';
 import SettingsDrawer from './components/SettingsDrawer';
+import TreeView from './components/TreeView';
 
 function InitErrorBanner() {
   const err = useBonsai((s) => s.initError);
@@ -27,6 +28,7 @@ export default function App() {
       <Conversation />
       <Composer />
       <SettingsDrawer />
+      <TreeView />
     </div>
   );
 }

@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Understory — surprisal bonsai (prototype)</title>
+<style>
+  :root { color-scheme: dark; }
+  html,body{margin:0;height:100%;background:#0a0d0b;color:#dfe7d8;
+    font-family:'Inter','Segoe UI',system-ui,sans-serif;overflow:hidden;}
+  #app{position:fixed;inset:0;}
+  canvas{display:block;}
+  .panel{position:absolute;z-index:10;user-select:none;}
+  #top{top:18px;left:20px;max-width:440px;}
+  #title{font-weight:700;font-size:15px;letter-spacing:.16em;color:#eaf1e4;}
+  #title span{color:#7cc47a;}
+  #sub{font-size:11.5px;color:#8aa07f;margin-top:3px;line-height:1.5;}
+  #btns{margin-top:12px;display:flex;gap:8px;}
+  .btn{cursor:pointer;background:#141a10;border:1px solid #2b3620;color:#c3d4b9;
+    border-radius:8px;padding:6px 11px;font-size:12px;transition:.15s;}
+  .btn:hover{background:#1e2717;}
+  .btn.active{border-color:#5aa85c;color:#7cc47a;background:rgba(90,168,92,.12);}
+  #legend{margin-top:14px;font-size:11px;color:#8aa07f;display:flex;align-items:center;gap:8px;}
+  #ramp{width:150px;height:9px;border-radius:5px;
+    background:linear-gradient(90deg,#4fa85c,#d8b357,#d94e46);}
+  #peak{margin-top:8px;font-size:12px;font-family:'JetBrains Mono',Consolas,monospace;color:#a9bd9f;}
+  #caption{bottom:22px;left:50%;transform:translateX(-50%);max-width:78vw;text-align:center;
+    font-size:15px;line-height:1.9;background:rgba(8,11,9,.55);backdrop-filter:blur(4px);
+    padding:10px 18px;border:1px solid #1e271a;border-radius:12px;}
+  #capq{font-size:11px;color:#6f8566;margin-bottom:6px;letter-spacing:.02em;}
+  #hint{bottom:2px;left:0;right:0;text-align:center;font-size:10.5px;color:#4f6349;}
+  #tip{position:fixed;z-index:20;pointer-events:none;display:none;background:#0d120b;
+    border:1px solid #38492c;border-radius:8px;padding:6px 9px;font-size:12px;
+    font-family:'JetBrains Mono',Consolas,monospace;box-shadow:0 6px 20px rgba(0,0,0,.5);}
+  #tip .tk{color:#eaf1e4;font-weight:600;}
+  #tip .bar{height:5px;border-radius:3px;margin-top:5px;}
+  #note{top:16px;right:20px;font-size:10.5px;color:#5f7457;text-align:right;max-width:230px;line-height:1.5;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+
+<div id="top" class="panel">
+  <div id="title">UNDERSTORY · <span>surprisal bonsai</span></div>
+  <div id="sub">A bonsai grown from the model's own per-token uncertainty. The trunk
+    <b>smolders red</b> and sprouts <b>ember branches</b> exactly where the model was least
+    certain — i.e. most likely confabulating. Green = confident.</div>
+  <div id="btns"></div>
+  <div id="legend"><span>confident</span><div id="ramp"></div><span>uncertain</span></div>
+  <div id="peak"></div>
+</div>
+
+<div id="note" class="panel">throwaway prototype · real logprobs from your local
+  Bonsai-27B · the shipped version lives in the native app, not a browser</div>
+
+<div id="caption" class="panel">
+  <div id="capq"></div>
+  <div id="capa"></div>
+</div>
+<div id="hint" class="panel">drag to orbit · scroll to zoom · hover a branch to read its token</div>
+<div id="tip"><span class="tk"></span> · <span class="sv"></span><div class="bar"></div></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.176.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.176.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+import { OutputPass } from 'three/addons/postprocessing/OutputPass.js';
+
+// ---- real data (captured from the local model via logprobs) ----
+const DATA = {"prompts":[{"label":"known","question":"What is 2 plus 2? Answer in one short sentence.","answer":"2 plus 2 equals 4.","tokens":[{"token":"2","surprisal":0.1719,"entropy":0.5767,"margin":2.1492},{"token":" plus","surprisal":0.1724,"entropy":0.4857,"margin":1.7674},{"token":" ","surprisal":0.0001,"entropy":0.0008,"margin":9.9782},{"token":"2","surprisal":0.0,"entropy":0.0004,"margin":11.5252},{"token":" equals","surprisal":0.3511,"entropy":0.6111,"margin":0.8681},{"token":" ","surprisal":0.0007,"entropy":0.006,"margin":7.984},{"token":"4","surprisal":0.0002,"entropy":0.0016,"margin":9.5604},{"token":".","surprisal":0.0056,"entropy":0.0354,"margin":5.3927}]},{"label":"titanic","question":"Who was the captain of the RMS Titanic? Answer in one sentence.","answer":"Sir Edward Smith was the captain of the RMS Titanic.","tokens":[{"token":"Sir","surprisal":1.1916,"entropy":1.1257,"margin":0.2577},{"token":" Edward","surprisal":0.7875,"entropy":0.8882,"margin":1.7548},{"token":" Smith","surprisal":1.652,"entropy":0.7457,"margin":1.3706},{"token":" was","surprisal":0.1007,"entropy":0.3836,"margin":3.7193},{"token":" the","surprisal":0.0025,"entropy":0.0171,"margin":6.6926},{"token":" captain","surprisal":0.0255,"entropy":0.1129,"margin":4.2138},{"token":" of","surprisal":0.0079,"entropy":0.0478,"margin":4.9329},{"token":" the","surprisal":0.0009,"entropy":0.0069,"margin":7.1401},{"token":" RMS","surprisal":0.0034,"entropy":0.0237,"margin":6.3613},{"token":" Titanic","surprisal":0.0091,"entropy":0.0542,"margin":4.8711},{"token":".","surprisal":0.0261,"entropy":0.1308,"margin":4.2789}]},{"label":"obscure","question":"Name the chief engineer of the RMS Carpathia and his birth year, in one sentence.","answer":"The chief engineer of the RMS Carpathia was John A. MacGregor, who was born in 1867.","tokens":[{"token":"The","surprisal":0.2433,"entropy":0.4838,"margin":3.0221},{"token":" chief","surprisal":0.0501,"entropy":0.2248,"margin":3.3375},{"token":" engineer","surprisal":0.001,"entropy":0.0077,"margin":8.1472},{"token":" of","surprisal":0.029,"entropy":0.1383,"margin":3.7255},{"token":" the","surprisal":0.0049,"entropy":0.0313,"margin":5.3509},{"token":" RMS","surprisal":0.002,"entropy":0.015,"margin":6.7229},{"token":" Car","surprisal":0.0159,"entropy":0.0811,"margin":4.1854},{"token":"path","surprisal":0.0001,"entropy":0.0005,"margin":11.1591},{"token":"ia","surprisal":0.0001,"entropy":0.0006,"margin":10.8252},{"token":" was","surprisal":0.0453,"entropy":0.1899,"margin":3.1494},{"token":" John","surprisal":3.2709,"entropy":0.6454,"margin":0.3474},{"token":" A","surprisal":3.5743,"entropy":0.6067,"margin":0.4489},{"token":".","surprisal":0.0407,"entropy":0.1143,"margin":5.2967},{"token":" Mac","surprisal":2.9937,"entropy":0.4657,"margin":0.4653},{"token":"Greg","surprisal":2.8755,"entropy":0.8997,"margin":0.9121},{"token":"or","surprisal":0.0032,"entropy":0.0195,"margin":6.7268},{"token":",","surprisal":0.2316,"entropy":0.421,"margin":3.1722},{"token":" who","surprisal":0.0561,"entropy":0.2393,"margin":3.0775},{"token":" was","surprisal":0.0003,"entropy":0.002,"margin":9.0775},{"token":" born","surprisal":0.0001,"entropy":0.0005,"margin":10.6488},{"token":" in","surprisal":0.0061,"entropy":0.0367,"margin":5.128},{"token":" ","surprisal":0.0052,"entropy":0.0319,"margin":5.3734},{"token":"1","surprisal":0.0001,"entropy":0.0007,"margin":10.6897},{"token":"8","surprisal":0.0065,"entropy":0.0452,"margin":5.6801},{"token":"6","surprisal":1.2195,"entropy":1.4209,"margin":0.0335},{"token":"7","surprisal":2.4462,"entropy":1.2308,"margin":0.0501},{"token":".","surprisal":0.0032,"entropy":0.023,"margin":6.898}]}]};
+
+// ---- surprisal → color / glow ----
+const lerp = (a,b,u)=>a+(b-a)*u;
+function rampRGB(s){
+  const t = Math.min(Math.max(s/3,0),1);
+  const g=[0.31,0.66,0.36], a=[0.86,0.70,0.34], r=[0.87,0.30,0.27];
+  let c;
+  if(t<0.5){const u=t/0.5;c=[lerp(g[0],a[0],u),lerp(g[1],a[1],u),lerp(g[2],a[2],u)];}
+  else{const u=(t-0.5)/0.5;c=[lerp(a[0],r[0],u),lerp(a[1],r[1],u),lerp(a[2],r[2],u)];}
+  return c;
+}
+const rampColor = s => new THREE.Color(...rampRGB(s));
+const glow = s => Math.pow(Math.min(Math.max((s-0.7)/2.3,0),1),1.15)*2.4; // emissive for uncertain
+
+// ---- renderer / scene / camera ----
+const app = document.getElementById('app');
+const renderer = new THREE.WebGLRenderer({antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio,2));
+renderer.setSize(innerWidth, innerHeight);
+renderer.toneMapping = THREE.AgXToneMapping;   // graceful saturated emissives (Booster-sim pointer)
+renderer.toneMappingExposure = 1.0;
+app.appendChild(renderer.domElement);
+
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x0a0d0b);
+scene.fog = new THREE.Fog(0x0a0d0b, 9, 26);
+
+const camera = new THREE.PerspectiveCamera(42, innerWidth/innerHeight, 0.1, 100);
+camera.position.set(4.6, 3.0, 6.4);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true; controls.dampingFactor = 0.08;
+controls.target.set(0, 2.1, 0);
+controls.autoRotate = true; controls.autoRotateSpeed = 0.55;
+controls.minDistance = 3; controls.maxDistance = 16;
+
+// ---- lighting: dark studio ----
+scene.add(new THREE.HemisphereLight(0x9fb6c8, 0x0a0d0b, 0.35));
+const key = new THREE.DirectionalLight(0xfff4e6, 1.5); key.position.set(5,9,4); scene.add(key);
+const rim = new THREE.DirectionalLight(0x6fa0ff, 0.7); rim.position.set(-6,4,-5); scene.add(rim);
+const fill = new THREE.PointLight(0xffe9c8, 0.5, 40); fill.position.set(0,3,6); scene.add(fill);
+
+// ---- ground + grid ----
+const ground = new THREE.Mesh(
+  new THREE.CircleGeometry(40, 64),
+  new THREE.MeshStandardMaterial({color:0x11150f, roughness:1, metalness:0}));
+ground.rotation.x = -Math.PI/2; ground.position.y = 0; scene.add(ground);
+const grid = new THREE.GridHelper(40, 40, 0x1c2a1c, 0x141d14);
+grid.position.y = 0.002; grid.material.transparent = true; grid.material.opacity = 0.35; scene.add(grid);
+
+// ---- pot (blue ceramic, echoing the reference but our own form) ----
+const potGroup = new THREE.Group();
+const potMat = new THREE.MeshStandardMaterial({color:0x21385e, roughness:0.35, metalness:0.1});
+const potBody = new THREE.Mesh(new THREE.CylinderGeometry(1.55,1.25,0.75,48), potMat);
+potBody.position.y = 0.42; potGroup.add(potBody);
+const potRim = new THREE.Mesh(new THREE.TorusGeometry(1.5,0.13,16,48), potMat);
+potRim.rotation.x = Math.PI/2; potRim.position.y = 0.8; potGroup.add(potRim);
+const soil = new THREE.Mesh(new THREE.CircleGeometry(1.42,48),
+  new THREE.MeshStandardMaterial({color:0x0e0f0c, roughness:1}));
+soil.rotation.x = -Math.PI/2; soil.position.y = 0.81; potGroup.add(soil);
+scene.add(potGroup);
+const POT_TOP = 0.82;
+
+// ---- bloom composer ----
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 0.75, 0.5, 0.82);
+composer.addPass(bloom);
+composer.addPass(new OutputPass()); // applies AgX tone-mapping + sRGB after bloom
+
+// ---- tree building ----
+let treeGroup = null;
+const hoverables = [];
+
+function cylinderBetween(a, b, rTop, rBot, mat){
+  const dir = new THREE.Vector3().subVectors(b,a); const len = dir.length();
+  const geo = new THREE.CylinderGeometry(rTop, rBot, len, 10, 1);
+  const m = new THREE.Mesh(geo, mat);
+  m.position.copy(a).addScaledVector(dir, 0.5);
+  m.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0), dir.clone().normalize());
+  return m;
+}
+function woodMat(s){
+  return new THREE.MeshStandardMaterial({
+    color:0x4a3526, roughness:0.85, metalness:0.0,
+    emissive:new THREE.Color(0xff3a1e), emissiveIntensity:glow(s)});
+}
+function blossom(center, radius, baseColor, emissiveI, count){
+  const g = new THREE.Group();
+  for(let i=0;i<count;i++){
+    const size = 0.10 + Math.random()*0.13;
+    const geo = new THREE.IcosahedronGeometry(size, 0);
+    const col = baseColor.clone().offsetHSL(0,(Math.random()-0.5)*0.05,(Math.random()-0.5)*0.12);
+    const mat = new THREE.MeshStandardMaterial({color:col, roughness:0.55, flatShading:true,
+      emissive:baseColor, emissiveIntensity:emissiveI});
+    const b = new THREE.Mesh(geo, mat);
+    b.position.set(
+      center.x + (Math.random()-0.5)*radius*2,
+      center.y + (Math.random()-0.5)*radius*1.3,
+      center.z + (Math.random()-0.5)*radius*2);
+    g.add(b);
+  }
+  return g;
+}
+
+function buildTree(prompt){
+  const tokens = prompt.tokens;
+  const n = tokens.length;
+  const group = new THREE.Group();
+  hoverables.length = 0;
+
+  const totalH = 3.4;
+  const segLen = Math.min(Math.max(totalH/n, 0.10), 0.46);
+  const rBase = 0.26, rTip = 0.05;
+
+  let pos = new THREE.Vector3(0, POT_TOP, 0);
+  let dir = new THREE.Vector3(0.16, 1, 0.05).normalize();
+  const pts = [{pos:pos.clone(), tk:null}];
+
+  for(let i=0;i<n;i++){
+    const tk = tokens[i];
+    // gnarl: uncertainty bends the trunk
+    const bend = Math.min(tk.entropy, 1.5) * 0.42;
+    const axis = new THREE.Vector3(Math.sin(i*1.7), 0.25, Math.cos(i*1.3)).normalize();
+    dir.applyAxisAngle(axis, bend * (i%2? 1 : -1));
+    dir.y = Math.max(dir.y, 0.6); dir.normalize();
+    const next = pos.clone().addScaledVector(dir, segLen);
+
+    const rB = lerp(rBase, rTip, i/n), rT = lerp(rBase, rTip, (i+1)/n);
+    const seg = cylinderBetween(pos, next, rT, rB, woodMat(tk.surprisal));
+    seg.userData = {token: tk.token, surprisal: tk.surprisal};
+    group.add(seg); hoverables.push(seg);
+
+    // ember branch at uncertain tokens
+    if(tk.surprisal > 0.8){
+      const side = new THREE.Vector3(Math.cos(i*2.3), 0.0, Math.sin(i*2.3)).normalize();
+      const bdir = side.clone().multiplyScalar(1).addScaledVector(new THREE.Vector3(0,1,0),0.5).normalize();
+      const blen = 0.5 + Math.min(tk.surprisal,4)*0.28;
+      const btip = next.clone().addScaledVector(bdir, blen);
+      const bmat = woodMat(tk.surprisal); bmat.emissiveIntensity = Math.max(glow(tk.surprisal),0.8);
+      const br = cylinderBetween(next, btip, 0.035, 0.09, bmat);
+      br.userData = {token: tk.token, surprisal: tk.surprisal};
+      group.add(br); hoverables.push(br);
+      // red ember foliage
+      const emberCol = rampColor(Math.max(tk.surprisal,1.6));
+      group.add(blossom(btip, 0.28+Math.min(tk.surprisal,4)*0.05, emberCol,
+        Math.max(glow(tk.surprisal),1.0), 14 + Math.floor(tk.surprisal*4)));
+    }
+    pts.push({pos:next.clone(), tk});
+    pos = next;
+  }
+
+  // serene green foliage pads along the upper trunk (garnish — bonsai silhouette)
+  const padColor = new THREE.Color(0xd7e6cb);
+  for(const frac of [0.55, 0.75, 0.95]){
+    const idx = Math.min(pts.length-1, Math.max(1, Math.round(frac*(pts.length-1))));
+    const c = pts[idx].pos;
+    group.add(blossom(c, 0.62, padColor, 0.12, 34));
+  }
+
+  group.position.y = 0.0;
+  return group;
+}
+
+function setTree(prompt){
+  if(treeGroup){ scene.remove(treeGroup); treeGroup.traverse(o=>{o.geometry?.dispose?.();}); }
+  treeGroup = buildTree(prompt);
+  scene.add(treeGroup);
+  // caption
+  document.getElementById('capq').textContent = 'Q: ' + prompt.question;
+  const capa = document.getElementById('capa'); capa.innerHTML = '';
+  for(const tk of prompt.tokens){
+    const span = document.createElement('span');
+    span.textContent = tk.token;
+    const [r,g,b] = rampRGB(tk.surprisal).map(v=>Math.round(v*255));
+    span.style.color = tk.surprisal>0.8 ? `rgb(${r},${g},${b})` : '#cdd9c3';
+    if(tk.surprisal>1.5){ span.style.fontWeight='700'; span.style.textShadow=`0 0 10px rgba(${r},${g},${b},.6)`; }
+    capa.appendChild(span);
+  }
+  const peak = Math.max(...prompt.tokens.map(t=>t.surprisal));
+  const mean = prompt.tokens.reduce((a,t)=>a+t.surprisal,0)/prompt.tokens.length;
+  document.getElementById('peak').textContent =
+    `peak surprisal ${peak.toFixed(2)} nats · mean ${mean.toFixed(2)}`;
+}
+
+// ---- buttons ----
+const btns = document.getElementById('btns');
+const labels = {known:'known fact', titanic:'Titanic captain', obscure:'obscure (made-up)'};
+DATA.prompts.forEach((p,i)=>{
+  const b = document.createElement('button');
+  b.className = 'btn' + (i===0?' active':''); b.textContent = labels[p.label]||p.label;
+  b.onclick = ()=>{ [...btns.children].forEach(c=>c.classList.remove('active')); b.classList.add('active'); setTree(p); };
+  btns.appendChild(b);
+});
+
+// ---- hover ----
+const ray = new THREE.Raycaster();
+const mouse = new THREE.Vector2();
+const tip = document.getElementById('tip');
+addEventListener('pointermove', e=>{
+  mouse.x = (e.clientX/innerWidth)*2-1; mouse.y = -(e.clientY/innerHeight)*2+1;
+  ray.setFromCamera(mouse, camera);
+  const hit = ray.intersectObjects(hoverables, false)[0];
+  if(hit && hit.object.userData.token !== undefined){
+    const {token, surprisal} = hit.object.userData;
+    tip.style.display='block'; tip.style.left=(e.clientX+14)+'px'; tip.style.top=(e.clientY+14)+'px';
+    tip.querySelector('.tk').textContent = JSON.stringify(token);
+    tip.querySelector('.sv').textContent = 'surprisal '+surprisal.toFixed(2)+' nats';
+    const [r,g,bl]=rampRGB(surprisal).map(v=>Math.round(v*255));
+    const bar=tip.querySelector('.bar'); bar.style.background=`rgb(${r},${g},${bl})`;
+    bar.style.width=Math.min(surprisal/4*100,100)+'%';
+  } else tip.style.display='none';
+});
+
+// ---- resize + loop ----
+addEventListener('resize', ()=>{
+  camera.aspect = innerWidth/innerHeight; camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight); composer.setSize(innerWidth, innerHeight);
+});
+setTree(DATA.prompts[0]);
+(function loop(){ requestAnimationFrame(loop); controls.update(); composer.render(); })();
+</script>
+</body>
+</html>
