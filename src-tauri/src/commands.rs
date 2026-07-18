@@ -1,10 +1,10 @@
 //! Tauri command surface exposed to the React frontend.
 
-use std::sync::atomic::Ordering;
 use serde::Serialize;
+use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager};
 
-use crate::llama_client::{ChatMessage, GenParams};
+use crate::llama_client::{ChatMessage, GenParams, TokenStat};
 use crate::AppState;
 
 #[derive(Serialize)]
@@ -16,13 +16,10 @@ pub struct StatusInfo {
     pub owns_server: bool,
 }
 
-/// Frontend polls this on mount and after a `bonsai://ready` / `bonsai://status`
-/// event to render the header state.
+/// Frontend polls this on mount and after ready/status events.
 #[tauri::command]
 pub async fn get_status(app: AppHandle) -> Result<StatusInfo, String> {
     let st = app.state::<AppState>();
-    // Bind each lock-clone to a local so the MutexGuard temporaries drop before
-    // `st` does (avoids E0597 on the block's tail expression).
     let ready = st.ready.load(Ordering::Relaxed);
     let status = st.status_msg.lock().unwrap().clone();
     let model = st.model_label.lock().unwrap().clone();
@@ -37,8 +34,7 @@ pub async fn get_status(app: AppHandle) -> Result<StatusInfo, String> {
     })
 }
 
-/// Cancel any in-flight generation. Bumping the stop epoch makes the running
-/// `chat_stream` loop observe a changed epoch and break at the next chunk.
+/// Cancel any in-flight generation.
 #[tauri::command]
 pub async fn stop_generation(app: AppHandle) -> Result<(), String> {
     let st = app.state::<AppState>();
@@ -53,15 +49,20 @@ pub struct AssistantReply {
     pub stopped: bool,
     pub tps: Option<f64>,
     pub tokens: u32,
+    /// Per-token uncertainty over the answer / reasoning channels (in-memory;
+    /// the generative tree and the uncertainty readout consume these).
+    pub answer_stats: Vec<TokenStat>,
+    pub reasoning_stats: Vec<TokenStat>,
+    pub mean_surprisal: Option<f64>,
+    pub peak_surprisal: Option<f64>,
 }
 
 /// Stream a reply. Tokens are emitted live as events keyed by `request_id`:
-///   bonsai://reasoning  { id, t }   thinking-channel delta
-///   bonsai://token      { id, t }   answer-channel delta
-///   bonsai://done       { id, stopped, tps, tokens }
+///   bonsai://reasoning  { id, t, st? }   thinking delta (+ per-token stat)
+///   bonsai://token      { id, t, st? }   answer delta   (+ per-token stat)
+///   bonsai://done       { id, stopped, tps, tokens, mean_surprisal, peak_surprisal }
 ///   bonsai://error      { id, error }
-/// The awaited return value carries the final assembled reply (the frontend
-/// uses it to reconcile the streamed text).
+/// The awaited return value carries the final assembled reply + full stat arrays.
 #[tauri::command]
 pub async fn send_message(
     app: AppHandle,
@@ -69,8 +70,6 @@ pub async fn send_message(
     params: GenParams,
     request_id: String,
 ) -> Result<AssistantReply, String> {
-    // Pull everything we need out of managed state in a tight scope so the
-    // State guard is never held across an await point.
     let (client, stop_epoch, start_epoch, ready) = {
         let st = app.state::<AppState>();
         (
@@ -87,17 +86,20 @@ pub async fn send_message(
 
     let app_r = app.clone();
     let rid_r = request_id.clone();
-    let on_reasoning = move |s: &str| {
+    let on_reasoning = move |s: &str, st: Option<TokenStat>| {
         let _ = app_r.emit(
             "bonsai://reasoning",
-            serde_json::json!({ "id": rid_r, "t": s }),
+            serde_json::json!({ "id": rid_r, "t": s, "st": st }),
         );
     };
 
     let app_a = app.clone();
     let rid_a = request_id.clone();
-    let on_answer = move |s: &str| {
-        let _ = app_a.emit("bonsai://token", serde_json::json!({ "id": rid_a, "t": s }));
+    let on_answer = move |s: &str, st: Option<TokenStat>| {
+        let _ = app_a.emit(
+            "bonsai://token",
+            serde_json::json!({ "id": rid_a, "t": s, "st": st }),
+        );
     };
 
     let cancel_epoch = stop_epoch.clone();
@@ -115,6 +117,8 @@ pub async fn send_message(
                     "stopped": r.stopped,
                     "tps": r.tps,
                     "tokens": r.tokens,
+                    "mean_surprisal": r.mean_surprisal,
+                    "peak_surprisal": r.peak_surprisal,
                 }),
             );
             Ok(AssistantReply {
@@ -123,6 +127,10 @@ pub async fn send_message(
                 stopped: r.stopped,
                 tps: r.tps,
                 tokens: r.tokens,
+                answer_stats: r.answer_stats,
+                reasoning_stats: r.reasoning_stats,
+                mean_surprisal: r.mean_surprisal,
+                peak_surprisal: r.peak_surprisal,
             })
         }
         Err(e) => {

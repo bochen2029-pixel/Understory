@@ -25,12 +25,25 @@ no cloud. Launch one `.exe`, get a native chat window.
 - Live **token streaming** with a stop button.
 - **Thinking mode** toggle — Bonsai reasons first (shown in a collapsible,
   live "Reasoning" panel) then answers. Turn off for instant direct replies.
+- **Per-token uncertainty readout** — each answer shows a peak-surprisal dot
+  (green → amber → red) computed from the model's own streamed logprobs. It
+  turns red exactly where the model was least certain (and most likely
+  confabulating). Measured, not inferred.
 - Markdown + fenced **code blocks** with one-click copy.
 - Adjustable sampling (temperature / top-p / top-k / max tokens) and a custom
   system prompt.
 - Conversation + settings persist across restarts (local `localStorage`).
-- **Server reuse:** if a `llama-server` is already healthy on `:8080`, the app
-  attaches to it instead of spawning a second one (no double VRAM).
+
+### Robustness
+- **Crash-safe:** the llama-server runs inside a Windows Job Object flagged
+  kill-on-close, so if the app crashes or is force-quit the server dies with it
+  — no orphaned process holding VRAM.
+- **Single-instance:** a second launch focuses the existing window instead of
+  opening a duplicate app + sidecar.
+- **Server identity check:** if something is already on `:8080`, the app
+  verifies via `/v1/models` that it's actually serving Bonsai before attaching;
+  otherwise it spawns its own on a free port (no silently talking to a stray
+  LM Studio / Ollama / different model).
 
 ---
 

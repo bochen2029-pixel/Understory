@@ -17,12 +17,23 @@ export interface GenParams {
   thinking: boolean;
 }
 
+/** Per-token uncertainty derived from streamed logprobs. */
+export interface TokenStat {
+  surprisal: number;
+  entropy: number;
+  margin: number;
+}
+
 export interface AssistantReply {
   content: string;
   reasoning: string;
   stopped: boolean;
   tps: number | null;
   tokens: number;
+  answer_stats: TokenStat[];
+  reasoning_stats: TokenStat[];
+  mean_surprisal: number | null;
+  peak_surprisal: number | null;
 }
 
 export interface StatusInfo {
@@ -35,7 +46,6 @@ export interface StatusInfo {
 
 export const ipc = {
   getStatus: () => invoke<StatusInfo>('get_status'),
-  /** requestId (camelCase) maps to the Rust `request_id` param automatically. */
   sendMessage: (messages: ChatMessage[], params: GenParams, requestId: string) =>
     invoke<AssistantReply>('send_message', { messages, params, requestId }),
   stopGeneration: () => invoke<void>('stop_generation'),
@@ -44,14 +54,40 @@ export const ipc = {
 export type Unlisten = UnlistenFn;
 
 export const events = {
-  onReasoning: (cb: (id: string, t: string) => void) =>
-    listen<{ id: string; t: string }>('bonsai://reasoning', (e) => cb(e.payload.id, e.payload.t)),
-  onToken: (cb: (id: string, t: string) => void) =>
-    listen<{ id: string; t: string }>('bonsai://token', (e) => cb(e.payload.id, e.payload.t)),
-  onDone: (cb: (id: string, stopped: boolean, tps: number | null, tokens: number) => void) =>
-    listen<{ id: string; stopped: boolean; tps: number | null; tokens: number }>(
-      'bonsai://done',
-      (e) => cb(e.payload.id, e.payload.stopped, e.payload.tps, e.payload.tokens),
+  onReasoning: (cb: (id: string, t: string, st: TokenStat | null) => void) =>
+    listen<{ id: string; t: string; st: TokenStat | null }>('bonsai://reasoning', (e) =>
+      cb(e.payload.id, e.payload.t, e.payload.st ?? null),
+    ),
+  onToken: (cb: (id: string, t: string, st: TokenStat | null) => void) =>
+    listen<{ id: string; t: string; st: TokenStat | null }>('bonsai://token', (e) =>
+      cb(e.payload.id, e.payload.t, e.payload.st ?? null),
+    ),
+  onDone: (
+    cb: (
+      id: string,
+      stopped: boolean,
+      tps: number | null,
+      tokens: number,
+      meanSurprisal: number | null,
+      peakSurprisal: number | null,
+    ) => void,
+  ) =>
+    listen<{
+      id: string;
+      stopped: boolean;
+      tps: number | null;
+      tokens: number;
+      mean_surprisal: number | null;
+      peak_surprisal: number | null;
+    }>('bonsai://done', (e) =>
+      cb(
+        e.payload.id,
+        e.payload.stopped,
+        e.payload.tps,
+        e.payload.tokens,
+        e.payload.mean_surprisal,
+        e.payload.peak_surprisal,
+      ),
     ),
   onError: (cb: (id: string, error: string) => void) =>
     listen<{ id: string; error: string }>('bonsai://error', (e) =>

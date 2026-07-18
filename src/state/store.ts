@@ -1,6 +1,6 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import { ipc, events, type ChatMessage, type GenParams } from '../lib/ipc';
+import { ipc, events, type ChatMessage, type GenParams, type TokenStat } from '../lib/ipc';
 
 export interface Msg {
   id: string;
@@ -13,6 +13,11 @@ export interface Msg {
   tps?: number | null;
   tokens?: number;
   thinkingOpen?: boolean;
+  /** Per-token uncertainty over the answer channel (in-memory; not persisted). */
+  answerStats?: TokenStat[];
+  /** Summary uncertainty (persisted): mean/peak surprisal over the answer. */
+  meanSurprisal?: number | null;
+  peakSurprisal?: number | null;
 }
 
 export interface Settings {
@@ -59,6 +64,7 @@ interface BonsaiState {
 
   _patch: (id: string, patch: Partial<Msg>) => void;
   _append: (id: string, field: 'content' | 'reasoning', text: string) => void;
+  _pushStat: (id: string, st: TokenStat) => void;
 }
 
 function uid(): string {
@@ -98,6 +104,13 @@ export const useBonsai = create<BonsaiState>()(
           ),
         })),
 
+      _pushStat: (id, st) =>
+        set((s) => ({
+          messages: s.messages.map((m) =>
+            m.id === id ? { ...m, answerStats: [...(m.answerStats ?? []), st] } : m,
+          ),
+        })),
+
       init: async () => {
         if (!listenersBound) {
           listenersBound = true;
@@ -107,9 +120,20 @@ export const useBonsai = create<BonsaiState>()(
             if (m && !m.thinkingOpen) _patch(id, { thinkingOpen: true });
             _append(id, 'reasoning', t);
           });
-          events.onToken((id, t) => _append(id, 'content', t));
-          events.onDone((id, stopped, tps, tokens) =>
-            _patch(id, { streaming: false, stopped, tps, tokens, thinkingOpen: false }),
+          events.onToken((id, t, st) => {
+            _append(id, 'content', t);
+            if (st) get()._pushStat(id, st);
+          });
+          events.onDone((id, stopped, tps, tokens, mean, peak) =>
+            _patch(id, {
+              streaming: false,
+              stopped,
+              tps,
+              tokens,
+              meanSurprisal: mean,
+              peakSurprisal: peak,
+              thinkingOpen: false,
+            }),
           );
           events.onError((id, error) => _patch(id, { streaming: false, error }));
           events.onReady((model, owns, ctx) =>
@@ -198,6 +222,9 @@ export const useBonsai = create<BonsaiState>()(
             stopped: reply.stopped,
             tps: reply.tps,
             tokens: reply.tokens,
+            answerStats: reply.answer_stats,
+            meanSurprisal: reply.mean_surprisal,
+            peakSurprisal: reply.peak_surprisal,
             thinkingOpen: false,
           });
         } catch (e) {
@@ -241,7 +268,9 @@ export const useBonsai = create<BonsaiState>()(
         settings: s.settings,
         messages: s.messages
           .filter((m) => !m.error && (m.content || m.reasoning))
-          .map((m) => ({ ...m, streaming: false, thinkingOpen: false })),
+          // Drop the heavy per-token array from disk (localStorage cap); keep
+          // the small mean/peak summary.
+          .map((m) => ({ ...m, streaming: false, thinkingOpen: false, answerStats: undefined })),
       }),
     },
   ),

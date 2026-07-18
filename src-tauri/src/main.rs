@@ -2,6 +2,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod commands;
+mod job;
 mod llama_client;
 mod sidecar;
 mod think_strip;
@@ -12,15 +13,14 @@ use tauri::{AppHandle, Emitter, Manager, WindowEvent};
 use tokio::process::Child;
 use tracing_subscriber::EnvFilter;
 
-/// llama-server context window. Bonsai supports 262144, but we default to a
-/// modest window that keeps peak VRAM tiny (KV cache ~ a few hundred MB here)
-/// while being plenty for interactive chat. Raise via ctx_size if desired.
+/// llama-server context window. Bonsai supports 262144; 16384 keeps peak VRAM
+/// tiny while being plenty for interactive chat. (Tier-1 hardening will make
+/// this a measured, user-set value.)
 const CTX_SIZE: u32 = 16384;
 
 pub struct AppState {
     pub client: Arc<llama_client::LlamaClient>,
-    /// The llama-server child — `Some` only when *this* process spawned it
-    /// (so we don't kill a server the user started independently).
+    /// The llama-server child — `Some` only when *this* process spawned it.
     pub llama_child: Mutex<Option<Child>>,
     /// Bumped by `stop_generation` to cancel an in-flight stream.
     pub stop_epoch: Arc<AtomicU64>,
@@ -40,10 +40,22 @@ fn main() {
         .try_init();
 
     tauri::Builder::default()
+        // Single-instance MUST be registered first: a second launch focuses the
+        // existing window instead of spawning a duplicate app + sidecar.
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(w) = app.get_webview_window("main") {
+                let _ = w.unminimize();
+                let _ = w.show();
+                let _ = w.set_focus();
+            }
+        }))
         .setup(|app| {
-            // Managed state is available synchronously (the client is cheap —
-            // just a base URL + http pool), so commands can read status even
-            // before the server finishes loading.
+            // Install the kill-on-close job BEFORE any child spawns, so the
+            // llama-server inherits it and can't be orphaned by a crash.
+            if let Err(e) = job::install_kill_on_close() {
+                tracing::warn!("kill-on-close job not installed (orphan backstop disabled): {e}");
+            }
+
             app.manage(AppState {
                 client: Arc::new(llama_client::LlamaClient::new(format!(
                     "http://127.0.0.1:{}",
@@ -72,12 +84,12 @@ fn main() {
         })
         .on_window_event(|window, event| {
             if let WindowEvent::CloseRequested { .. } = event {
-                // Kill the llama-server we own so it doesn't linger after the
-                // GUI closes. kill_on_drop also covers hard exits.
                 if let Some(st) = window.app_handle().try_state::<AppState>() {
                     if let Some(mut child) = st.llama_child.lock().unwrap().take() {
                         let _ = child.start_kill();
                     }
+                    // The inherited kill-on-close job is the backstop for any
+                    // path that skips this graceful kill.
                 }
             }
         })
@@ -90,55 +102,82 @@ fn main() {
         .expect("error while running Bonsai");
 }
 
+fn basename(s: &str) -> String {
+    s.rsplit(|c| c == '/' || c == '\\')
+        .next()
+        .unwrap_or(s)
+        .to_string()
+}
+
 async fn init(app: AppHandle) -> anyhow::Result<()> {
-    // Reuse an already-healthy server (a manually launched one, or a leftover)
-    // instead of spawning a second copy that would double VRAM use.
-    let client = {
+    let (client, ctx) = {
         let st = app.state::<AppState>();
-        st.client.clone()
+        (st.client.clone(), st.ctx_size)
     };
 
     if client.health_check().await {
-        tracing::info!("existing llama-server detected on :{} — reusing", sidecar::PORT);
-        let st = app.state::<AppState>();
-        *st.status_msg.lock().unwrap() = "Reusing running server".into();
-        *st.model_label.lock().unwrap() = sidecar::model_label();
-        st.owns_server.store(false, Ordering::Relaxed);
-    } else {
-        let msg = "Loading Bonsai-27B (1-bit) onto GPU…".to_string();
-        {
+        // Something's on the preferred port — but is it OURS? Don't attach to a
+        // stray LM Studio / Ollama / different-model llama-server.
+        let id = client.server_model_id().await.unwrap_or_default();
+        if id.to_lowercase().contains(sidecar::MODEL_MATCH) {
+            tracing::info!("reusing existing Bonsai server on :{} (model={id})", sidecar::PORT);
             let st = app.state::<AppState>();
-            *st.status_msg.lock().unwrap() = msg.clone();
+            *st.status_msg.lock().unwrap() = "Reusing running server".into();
+            let label = if id.is_empty() {
+                sidecar::model_label()
+            } else {
+                basename(&id)
+            };
+            *st.model_label.lock().unwrap() = label;
+            st.owns_server.store(false, Ordering::Relaxed);
+        } else {
+            tracing::warn!(
+                ":{} is serving a different model ({id:?}); spawning our own on a free port",
+                sidecar::PORT
+            );
+            spawn_ours(&app, ctx, sidecar::pick_free_port(sidecar::PORT + 1)).await?;
         }
-        let _ = app.emit("bonsai://status", msg);
-
-        let ctx = {
-            let st = app.state::<AppState>();
-            st.ctx_size
-        };
-        let child = sidecar::spawn_llama_server(ctx).await?;
-
-        let st = app.state::<AppState>();
-        *st.llama_child.lock().unwrap() = Some(child);
-        st.owns_server.store(true, Ordering::Relaxed);
-        *st.model_label.lock().unwrap() = sidecar::model_label();
+    } else {
+        // Nothing healthy on the preferred port; take it if free, else scan up.
+        let port = sidecar::pick_free_port(sidecar::PORT);
+        spawn_ours(&app, ctx, port).await?;
     }
 
-    let (label, owns, ctx) = {
+    let (label, owns, ctx_size) = {
         let st = app.state::<AppState>();
         st.ready.store(true, Ordering::Relaxed);
         *st.status_msg.lock().unwrap() = "Ready".into();
-        // Bind lock-clones to locals so their guards drop before `st`.
         let label = st.model_label.lock().unwrap().clone();
         let owns = st.owns_server.load(Ordering::Relaxed);
-        let ctx = st.ctx_size;
-        (label, owns, ctx)
+        (label, owns, st.ctx_size)
     };
 
     let _ = app.emit(
         "bonsai://ready",
-        serde_json::json!({ "model": label, "owns": owns, "ctx": ctx }),
+        serde_json::json!({ "model": label, "owns": owns, "ctx": ctx_size }),
     );
-    tracing::info!("Bonsai ready (model={label}, owns_server={owns}, ctx={ctx})");
+    tracing::info!("Bonsai ready (model={label}, owns_server={owns}, ctx={ctx_size})");
+    Ok(())
+}
+
+/// Spawn our own llama-server on `port`, repointing the client if it's not the
+/// preferred port, and store the child + job in state.
+async fn spawn_ours(app: &AppHandle, ctx: u32, port: u16) -> anyhow::Result<()> {
+    let msg = "Loading Bonsai-27B (1-bit) onto GPU…";
+    {
+        let st = app.state::<AppState>();
+        *st.status_msg.lock().unwrap() = msg.into();
+        if port != sidecar::PORT {
+            st.client.set_base_url(format!("http://127.0.0.1:{port}"));
+        }
+    }
+    let _ = app.emit("bonsai://status", msg);
+
+    let child = sidecar::spawn_llama_server(ctx, port).await?;
+
+    let st = app.state::<AppState>();
+    *st.llama_child.lock().unwrap() = Some(child);
+    st.owns_server.store(true, Ordering::Relaxed);
+    *st.model_label.lock().unwrap() = sidecar::model_label();
     Ok(())
 }
