@@ -13,8 +13,9 @@ no cloud. Launch one `.exe`, get a native chat window.
 > **The 🌳 Tree view** grows a bonsai from the answer's own logprobs — the trunk
 > smolders red and sprouts glowing ember-branches *exactly* where the model was
 > least certain (i.e. most likely confabulating), and stays smooth green where it
-> was confident. Above: the model hedging on the Titanic's dimensions — every
-> figure lit amber-red. Hover a branch to read its token. It's the visual dual of
+> was confident. Above — in the app's **native window** (title bar and all, no
+> browser) — the model hedging on the Titanic's dimensions, every figure lit
+> amber-red; hovering a branch reads back its token. It's the visual dual of
 > "don't trust model-authored facts": the gnarls tell you where to point a check.
 
 ---
