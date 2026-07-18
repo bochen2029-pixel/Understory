@@ -1,0 +1,43 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Bonsai",
+  "version": "1.0.0",
+  "identifier": "com.prismml.bonsai.chat",
+  "build": {
+    "frontendDist": "../dist",
+    "devUrl": "http://localhost:1420",
+    "beforeDevCommand": "pnpm dev",
+    "beforeBuildCommand": "pnpm build"
+  },
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Bonsai — 1-bit 27B",
+        "width": 940,
+        "height": 860,
+        "minWidth": 560,
+        "minHeight": 640,
+        "resizable": true,
+        "fullscreen": false,
+        "transparent": false,
+        "decorations": true,
+        "center": true,
+        "theme": "Dark"
+      }
+    ],
+    "security": {
+      "csp": null
+    }
+  },
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["icons/icon.ico"],
+    "shortDescription": "Local 1-bit Bonsai-27B chat",
+    "longDescription": "Bonsai — a native, browser-free chat app for the local 1-bit Bonsai-27B model. Spawns a bundled/local llama.cpp (PrismML build) server and talks to it over HTTP. Requires the Bonsai llama.cpp build at C:\\llama.cpp-bonsai and the GGUF at C:\\models\\Bonsai-27B-Q1_0.gguf.",
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" }
+    }
+  }
+}
